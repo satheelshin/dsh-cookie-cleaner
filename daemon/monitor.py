@@ -89,7 +89,9 @@ def app_pids(app_mark=APP_MARK):
     entries = ps_entries()
     if entries is None:
         return None
-    return [pid for pid, args in entries if app_mark in args]
+    me = os.getpid()
+    # 排除自己：守护进程的 argv 里可能就带着 --app-mark，匹配到自己会永远以为 DSH 在跑
+    return [pid for pid, args in entries if pid != me and app_mark in args]
 
 
 def singleton_pid(singleton):

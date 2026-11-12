@@ -45,6 +45,23 @@ function linkLock(singleton, pid) {
   fs.symlinkSync(`e2ehost-${pid}`, singleton)
 }
 
+function daemonLog(p) {
+  try {
+    return fs.readFileSync(p.log, 'utf8')
+  } catch {
+    return '(守护没写日志——可能根本没启动)'
+  }
+}
+
+// 超时的时候把守护日志一起抛出来，不然 CI 上只看得到「等待超时」。
+async function waitOrExplain(fn, p, timeoutMs) {
+  try {
+    await waitFor(fn, timeoutMs)
+  } catch (e) {
+    throw new Error(`${e.message}\n--- 守护日志 ---\n${daemonLog(p)}`)
+  }
+}
+
 function waitFor(fn, timeoutMs = 10000) {
   const start = Date.now()
   return new Promise((resolve, reject) => {
@@ -77,7 +94,7 @@ test('守护循环：发现 DSH 不在 → 备份后删除 cookie 库', async ()
 
   const child = runDaemon(p, ['--grace-seconds', '0.3', '--poll-seconds', '0.1'])
   try {
-    await waitFor(() => !fs.existsSync(p.db))
+    await waitOrExplain(() => !fs.existsSync(p.db), p)
     const saved = fs.readdirSync(p.backups).filter((n) => n.startsWith('cookies-'))
     assert.equal(saved.length, 1, '应当留下 1 份备份')
     assert.ok(fs.existsSync(path.join(p.backups, saved[0], 'Cookies')), '备份里应有 Cookies')
@@ -95,7 +112,7 @@ test('守护循环：库是空的就不留备份', async () => {
 
   const child = runDaemon(p, ['--grace-seconds', '0.2', '--poll-seconds', '0.1'])
   try {
-    await waitFor(() => !fs.existsSync(p.db))
+    await waitOrExplain(() => !fs.existsSync(p.db), p)
     assert.deepEqual(fs.readdirSync(p.backups), [], '0 条时不该产生备份')
     assert.match(fs.readFileSync(p.log, 'utf8'), /0 条 cookie/)
   } finally {

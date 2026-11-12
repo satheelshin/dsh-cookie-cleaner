@@ -87,6 +87,16 @@ class CleanupTest(unittest.TestCase):
         self.assertTrue(certain)
         self.assertTrue(any("ps" in n for n in notes))
 
+    def test_app_pids_ignores_self(self):
+        original = monitor.ps_entries
+        me = os.getpid()
+        monitor.ps_entries = lambda: [(me, "python3 monitor.py --app-mark MAGIC"), (4242, "python3 worker --app-mark MAGIC")]
+        try:
+            pids = monitor.app_pids("MAGIC")
+        finally:
+            monitor.ps_entries = original
+        self.assertEqual(pids, [4242])
+
     def test_app_running_falls_back_to_singleton(self):
         original = monitor.ps_entries
         monitor.ps_entries = lambda: []
