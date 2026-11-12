@@ -21,32 +21,43 @@ function tmpHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cookie-test-'))
 }
 
-// 假 launchctl：print 看标记文件，bootstrap 建标记，bootout 删标记，全部记进 calls.log。
-function fakeLaunchctl(dir) {
+// 假 launchctl：print 看标记文件，bootstrap 建标记，bootout 删标记。
+// bootout 后还会「赖」几轮 print 才真消失，用来模拟真实 launchd 的异步退出。
+function fakeLaunchctl(dir, lingerRounds = 2) {
   const bin = path.join(dir, 'launchctl')
   const marker = path.join(dir, 'loaded.marker')
+  const linger = path.join(dir, 'linger.count')
   const calls = path.join(dir, 'calls.log')
   fs.writeFileSync(
     bin,
     `#!/bin/sh
 echo "$@" >> "${calls}"
 case "$1" in
-  print) [ -f "${marker}" ] && echo "state = running" && exit 0; echo "Could not find service" >&2; exit 113 ;;
+  print)
+    if [ -f "${linger}" ]; then
+      n=$(cat "${linger}")
+      if [ "$n" -gt 0 ]; then echo $((n - 1)) > "${linger}"; echo "state = running"; exit 0; fi
+      rm -f "${linger}"
+    fi
+    [ -f "${marker}" ] && echo "state = running" && exit 0
+    echo "Could not find service" >&2
+    exit 113 ;;
   bootstrap) : > "${marker}"; exit 0 ;;
-  bootout) rm -f "${marker}"; exit 0 ;;
+  bootout) rm -f "${marker}"; echo ${lingerRounds} > "${linger}"; exit 0 ;;
   load) : > "${marker}"; exit 0 ;;
 esac
 exit 0
 `,
   )
   fs.chmodSync(bin, 0o755)
-  return { bin, marker, calls }
+  return { bin, marker, linger, calls }
 }
 
 function ctxFor(home, launchctlBin) {
   const ctx = defaultContext({ HOME: home })
   ctx.platform = 'darwin'
   ctx.uid = 501
+  ctx.bootoutTimeoutMs = 600
   if (launchctlBin) ctx.launchctl = launchctlBin
   return ctx
 }
@@ -133,6 +144,33 @@ test('重复 install 会先 bootout 再 bootstrap（修复路径）', async () =
   assert.equal(r.replaced, true)
   const calls = fs.readFileSync(fake.calls, 'utf8')
   assert.match(calls, /bootout gui\/501\/com\.deepseek\.dsh-cookie-cleaner/)
+})
+
+test('重装要等旧服务真消失，不能把「旧的还挂着」当成功', async () => {
+  const home = tmpHome()
+  const fake = fakeLaunchctl(tmpHome(), 2)
+  const ctx = ctxFor(home, fake.bin)
+  await install(ctx)
+  fs.writeFileSync(fake.calls, '')
+  const r = await install(ctx)
+  assert.equal(r.ok, true)
+  assert.equal(r.replaced, true)
+  const calls = fs.readFileSync(fake.calls, 'utf8').trim().split('\n')
+  const bootoutAt = calls.findIndex((l) => l.startsWith('bootout'))
+  const bootstrapAt = calls.findIndex((l) => l.startsWith('bootstrap'))
+  assert.ok(bootoutAt > -1 && bootstrapAt > bootoutAt, '必须先 bootout、等它消失，再 bootstrap')
+  const printsBetween = calls.slice(bootoutAt, bootstrapAt).filter((l) => l.startsWith('print')).length
+  assert.ok(printsBetween >= 3, `中间应当轮询过 print，实际 ${printsBetween} 次`)
+})
+
+test('bootout 一直不消失时直接报错，不假装装好', async () => {
+  const home = tmpHome()
+  const fake = fakeLaunchctl(tmpHome(), 999)
+  const ctx = ctxFor(home, fake.bin)
+  await install(ctx)
+  const r = await install(ctx)
+  assert.equal(r.ok, false)
+  assert.match(r.error, /bootout 超时/)
 })
 
 test('bootstrap 失败时回退 load -w，两条都失败就报错', async () => {

@@ -232,7 +232,7 @@ def build_parser():
     parser.add_argument("--keep-backups", type=int, default=3)
     parser.add_argument("--app-mark", default=APP_MARK, help="进程命令行里出现这个字符串就当 DSH 在跑（测试用）")
     parser.add_argument("--once", action="store_true", help="只做一次：DSH 在跑就退出 2，否则立刻清理")
-    parser.add_argument("--version", action="version", version="dsh-cookie-cleaner 0.2.0")
+    parser.add_argument("--version", action="version", version="dsh-cookie-cleaner 0.2.1")
     return parser
 
 
