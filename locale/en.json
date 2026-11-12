@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cookie cleaner",
+    "description": "Stops dsh-auth cookies from piling up in the DSH desktop app. Every launch uses a new random port, so every launch signs a cookie with a new name; once about 72 of them accumulate the request header passes 16 KB and startup fails with 431 / Web authentication failed. This plugin installs a small macOS launchd daemon that backs up and clears the cookie database after DSH fully exits, so the next launch starts from one cookie; the plugin itself adds cookie_cleaner_status (daemon state, cookie count, backups, log), cookie_cleaner_install (install or repair the daemon), cookie_cleaner_uninstall (remove it, keeping backups by default), and cookie_cleaner_log (recent cleanup records). macOS only. Cleanup runs only after DSH quits: while it runs the database is in use and deleting it changes nothing. Disabling or removing the plugin does not remove an installed launchd daemon; call cookie_cleaner_uninstall first."
+  }
+}

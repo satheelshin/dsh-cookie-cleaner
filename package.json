@@ -1,0 +1,46 @@
+{
+  "name": "dsh-cookie-cleaner",
+  "version": "0.1.0",
+  "description": "给 DSH 桌面版清常驻 cookie：launchd 守护在每次完全退出后备份并清空 cookie 库，插件负责安装、诊断、卸载。",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "daemon/",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "cookie",
+    "launchd",
+    "macos"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/satheelshin/dsh-cookie-cleaner.git"
+  },
+  "homepage": "https://github.com/satheelshin/dsh-cookie-cleaner"
+}

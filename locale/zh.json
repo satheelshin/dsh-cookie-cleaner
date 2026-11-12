@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cookie 常驻清理",
+    "description": "给 DSH 桌面版清掉越攒越多的 dsh-auth cookie：每次启动端口都不同，cookie 名字就不同，攒到 72 条左右请求头超过 16KB，启动直接报 431 / Web authentication failed。本插件装一个 macOS launchd 常驻小守护，在 DSH 完全退出后先备份、再清空 cookie 库，下次启动只留一条；插件本身提供 cookie_cleaner_status（看守护状态、cookie 条数、备份、日志）、cookie_cleaner_install（安装或修复守护）、cookie_cleaner_uninstall（卸载，默认保留备份）、cookie_cleaner_log（看清理记录）四个工具。只在 macOS 生效；清理必须等 DSH 退出后执行，DSH 运行中库被占用，删了也会被写回。卸载插件不会自动移除已安装的 launchd 守护，需要先调用 cookie_cleaner_uninstall。"
+  }
+}

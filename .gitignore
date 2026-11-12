@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+
+# 备份里是真实 cookie 库副本，日志是本机路径，都不进仓库
+backups/
+*.log
+!/.github/*.log
