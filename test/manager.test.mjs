@@ -190,6 +190,24 @@ test('status 汇总守护状态、条数、备份与日志', async () => {
   assert.match(text, /cookie 条数：3/)
 })
 
+test('python 不存在时 install 直接拒绝，不写 plist', async () => {
+  const home = tmpHome()
+  const ctx = ctxFor(home, fakeLaunchctl(tmpHome()).bin)
+  ctx.python = path.join(home, 'no-such-python')
+  const r = await install(ctx, {})
+  assert.equal(r.ok, false)
+  assert.match(r.error, /python3/)
+  assert.equal(fs.existsSync(ctx.plistPath), false, '装不上就不该留下 plist')
+})
+
+test('status 报告 python3 是否可执行', async () => {
+  const home = tmpHome()
+  const ctx = ctxFor(home, fakeLaunchctl(tmpHome()).bin)
+  ctx.python = path.join(home, 'no-such-python')
+  const s = await status(ctx)
+  assert.equal(s.python.ok, false)
+})
+
 test('status 在守护未加载时给出警告', async () => {
   const home = tmpHome()
   const ctx = ctxFor(home, fakeLaunchctl(tmpHome()).bin)

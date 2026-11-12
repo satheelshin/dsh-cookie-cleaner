@@ -85,11 +85,11 @@ def ps_entries():
     return entries
 
 
-def app_pids():
+def app_pids(app_mark=APP_MARK):
     entries = ps_entries()
     if entries is None:
         return None
-    return [pid for pid, args in entries if APP_MARK in args]
+    return [pid for pid, args in entries if app_mark in args]
 
 
 def singleton_pid(singleton):
@@ -113,23 +113,30 @@ def pid_alive(pid):
         return False
 
 
-def app_running(singleton):
-    """返回 (running, notes)。拿不准时按「还在跑」处理，宁可不清理。"""
+def app_running(singleton, app_mark=APP_MARK):
+    """返回 (running, notes, certain)。
+
+    certain=False 表示证据不足（比如 ps 被拒、也没有 SingletonLock），这时调用方
+    不能当「已退出」处理：删库是不可逆的，宁可这轮不清理。
+    """
     notes = []
-    pids = app_pids()
+    pids = app_pids(app_mark)
+    certain = True
     if pids is None:
         notes.append("ps 不可用")
+        certain = False
     else:
         notes.append("ps 匹配 PID=%s" % (pids or "无"))
         if pids:
-            return True, notes
+            return True, notes, True
     spid = singleton_pid(singleton)
     if spid is not None:
         alive = pid_alive(spid)
         notes.append("SingletonLock PID=%s alive=%s" % (spid, alive))
-        if alive:
-            return True, notes
-    return False, notes
+        # 拿到 lock 就是确定信号：活着在跑，死了就真退了
+        return alive, notes, True
+    notes.append("无 SingletonLock")
+    return False, notes, certain
 
 
 def cookie_count(db):
@@ -221,8 +228,9 @@ def build_parser():
     parser.add_argument("--grace-seconds", type=float, default=5.0)
     parser.add_argument("--poll-seconds", type=float, default=3.0)
     parser.add_argument("--keep-backups", type=int, default=3)
+    parser.add_argument("--app-mark", default=APP_MARK, help="进程命令行里出现这个字符串就当 DSH 在跑（测试用）")
     parser.add_argument("--once", action="store_true", help="只做一次：DSH 在跑就退出 2，否则立刻清理")
-    parser.add_argument("--version", action="version", version="dsh-cookie-cleaner 0.1.0")
+    parser.add_argument("--version", action="version", version="dsh-cookie-cleaner 0.2.0")
     return parser
 
 
@@ -230,10 +238,13 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
 
     if args.once:
-        running, notes = app_running(args.singleton)
+        running, notes, certain = app_running(args.singleton, args.app_mark)
         if running:
             log("DSH 正在运行（%s），不清理：库被占用，删了也会被写回" % "; ".join(notes), args.log)
             return 2
+        if not certain:
+            log("判不准 DSH 是否已退出（%s），不清理" % "; ".join(notes), args.log)
+            return 3
         os.makedirs(args.backup_dir, exist_ok=True)
         result = cleanup(args.db, args.backup_dir, args.keep_backups, args.log)
         return 0 if result["cleaned"] else 1
@@ -244,11 +255,17 @@ def main(argv=None):
     log("常驻清理器启动 pid=%s（等待 DSH 退出）" % os.getpid(), args.log)
 
     last_running = time.time()
+    last_unsure = 0.0
     while _RUNNING:
-        running, notes = app_running(args.singleton)
+        running, notes, certain = app_running(args.singleton, args.app_mark)
         now = time.time()
         if running:
             last_running = now
+        elif not certain:
+            # 证据不足时不清理，最多每 5 分钟说一次，免得刷爆日志
+            if now - last_unsure >= 300:
+                log("判不准 DSH 是否已退出（%s），这轮跳过" % "; ".join(notes), args.log)
+                last_unsure = now
         elif now - last_running >= args.grace_seconds and (
             os.path.exists(args.db) or os.path.exists(args.db + "-journal")
         ):

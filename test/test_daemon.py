@@ -80,10 +80,11 @@ class CleanupTest(unittest.TestCase):
         original = monitor.ps_entries
         monitor.ps_entries = lambda: [(123, "DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness")]
         try:
-            running, notes = monitor.app_running("/nonexistent/SingletonLock")
+            running, notes, certain = monitor.app_running("/nonexistent/SingletonLock")
         finally:
             monitor.ps_entries = original
         self.assertTrue(running)
+        self.assertTrue(certain)
         self.assertTrue(any("ps" in n for n in notes))
 
     def test_app_running_falls_back_to_singleton(self):
@@ -92,15 +93,44 @@ class CleanupTest(unittest.TestCase):
         link = os.path.join(self.home, "SingletonLock")
         os.symlink("host-%d" % os.getpid(), link)
         try:
-            running, _ = monitor.app_running(link)
+            running, _, certain = monitor.app_running(link)
         finally:
             monitor.ps_entries = original
         self.assertTrue(running)
+        self.assertTrue(certain)
+
+    def test_app_running_uncertain_without_ps_or_lock(self):
+        original = monitor.ps_entries
+        monitor.ps_entries = lambda: None
+        try:
+            running, notes, certain = monitor.app_running(os.path.join(self.home, "no-lock"))
+        finally:
+            monitor.ps_entries = original
+        self.assertFalse(running)
+        self.assertFalse(certain, "ps 不可用又没 lock 时必须承认判不准")
+        self.assertTrue(any("ps 不可用" in n for n in notes))
+
+    def test_once_refuses_when_uncertain(self):
+        make_db(self.db, 2)
+        original = monitor.app_running
+        monitor.app_running = lambda _s, _m: (False, ["ps 不可用", "无 SingletonLock"], False)
+        try:
+            code = monitor.main([
+                "--once",
+                "--db", self.db,
+                "--singleton", os.path.join(self.home, "nope"),
+                "--backup-dir", self.backups,
+                "--log", self.log,
+            ])
+        finally:
+            monitor.app_running = original
+        self.assertEqual(code, 3)
+        self.assertTrue(os.path.exists(self.db), "判不准时不许动库")
 
     def test_once_refuses_while_running(self):
         make_db(self.db, 2)
         original = monitor.app_running
-        monitor.app_running = lambda _s: (True, ["ps 匹配 PID=[1]"])
+        monitor.app_running = lambda _s, _m: (True, ["ps 匹配 PID=[1]"], True)
         try:
             code = monitor.main([
                 "--once",
